@@ -6,6 +6,7 @@ import {
   Routes,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
+  type GuildTextBasedChannel,
 } from 'discord.js';
 import fsp from 'node:fs/promises';
 
@@ -69,12 +70,15 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
 
 client.login(settings.discordBotToken);
 
-async function fetchReviewChannel() {
+async function fetchReviewChannel(): Promise<GuildTextBasedChannel> {
+  if (!settings.discordReviewChannelId) {
+    throw new Error('No fallback review channel configured (DISCORD_REVIEW_CHANNEL_ID is missing in .env)');
+  }
   const channel = await client.channels.fetch(settings.discordReviewChannelId);
   if (!channel?.isTextBased() || channel.isDMBased()) {
     throw new Error(`DISCORD_REVIEW_CHANNEL_ID ${settings.discordReviewChannelId} is not a guild text channel`);
   }
-  return channel;
+  return channel as GuildTextBasedChannel;
 }
 
 async function handleMeetingStart(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -106,12 +110,12 @@ async function handleMeetingStart(interaction: ChatInputCommandInteraction): Pro
   });
 
   try {
-    await startRecording(guild, voiceChannel, settings.discordReviewChannelId, meetingId);
+    await startRecording(guild, voiceChannel, interaction.channelId, meetingId);
     await interaction.followUp({
       content:
         `🔴 Aufnahme läuft in **${voiceChannel.name}**.\n` +
         '**Bitte jetzt im Voice Channel sprechen** (mind. 3 Sekunden, nicht stummgeschaltet).\n' +
-        `Ruf \`/meeting_review\` auf, wenn das Meeting fertig ist. Transkript/Vorschläge erscheinen in <#${settings.discordReviewChannelId}>.`,
+        `Ruf \`/meeting_review\` auf, wenn das Meeting fertig ist. Transkript/Vorschläge erscheinen in <#${interaction.channelId}>.`,
       ephemeral: true,
     });
   } catch (err) {
@@ -142,7 +146,7 @@ async function handleMeetingReview(interaction: ChatInputCommandInteraction): Pr
 
   try {
     const { meetingId, trackFiles, trackDebug } = await stopRecording(guild.id);
-    const reviewChannel = interaction.channel || (await fetchReviewChannel());
+    const reviewChannel = (interaction.channel as GuildTextBasedChannel | null) || (await fetchReviewChannel());
     const parts: string[] = [];
     const failures: string[] = [];
     const failedTracksToUpload: { name: string; wavPath: string }[] = [];

@@ -6,7 +6,7 @@ import {
   type Client,
   type Interaction,
   type TextChannel,
-  type TextBasedChannel,
+  type GuildTextBasedChannel,
 } from 'discord.js';
 
 import type { Settings } from './config.js';
@@ -47,12 +47,15 @@ function buildReviewRow(key: string): ActionRowBuilder<ButtonBuilder> {
   );
 }
 
-async function getReviewChannel(client: Client, settings: Settings): Promise<TextBasedChannel> {
+async function getReviewChannel(client: Client, settings: Settings): Promise<GuildTextBasedChannel> {
+  if (!settings.discordReviewChannelId) {
+    throw new Error('No fallback review channel configured (DISCORD_REVIEW_CHANNEL_ID is missing in .env)');
+  }
   const channel = await client.channels.fetch(settings.discordReviewChannelId);
   if (!channel?.isTextBased() || channel.isDMBased()) {
     throw new Error(`DISCORD_REVIEW_CHANNEL_ID ${settings.discordReviewChannelId} is not a guild text channel`);
   }
-  return channel as TextBasedChannel;
+  return channel as GuildTextBasedChannel;
 }
 
 export async function postReviewProposals(
@@ -60,7 +63,7 @@ export async function postReviewProposals(
   settings: Settings,
   meetingId: string,
   transcript: string,
-  targetChannel?: TextBasedChannel,
+  targetChannel?: GuildTextBasedChannel,
 ): Promise<void> {
   const textChannel = targetChannel || (await getReviewChannel(client, settings));
 

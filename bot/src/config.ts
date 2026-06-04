@@ -11,7 +11,7 @@ export type TicketProposalBackend = 'auto' | 'openclaw';
 export interface Settings {
   discordBotToken: string;
   discordGuildId: string | null;
-  discordReviewChannelId: string;
+  discordReviewChannelId: string | null;
   discordAllowedRoleIds: string[];
   discordReviewerRoleIds: string[];
   whisperAsrUrl: string;
@@ -69,7 +69,7 @@ export function loadSettings(): Settings {
   return {
     discordBotToken: requireEnv('DISCORD_BOT_TOKEN'),
     discordGuildId: process.env.DISCORD_GUILD_ID?.trim() || null,
-    discordReviewChannelId: requireEnv('DISCORD_REVIEW_CHANNEL_ID'),
+    discordReviewChannelId: process.env.DISCORD_REVIEW_CHANNEL_ID?.trim() || null,
     discordAllowedRoleIds,
     discordReviewerRoleIds,
     whisperAsrUrl: requireEnv('WHISPER_ASR_URL').replace(/\/$/, ''),
