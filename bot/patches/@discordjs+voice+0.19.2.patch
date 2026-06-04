@@ -1,0 +1,15 @@
+diff --git a/node_modules/@discordjs/voice/dist/index.mjs b/node_modules/@discordjs/voice/dist/index.mjs
+index 0000000..1111111 100644
+--- a/node_modules/@discordjs/voice/dist/index.mjs
++++ b/node_modules/@discordjs/voice/dist/index.mjs
+@@ -893,6 +893,10 @@ var DAVESession = class extends EventEmitter2 {
+       this.consecutiveFailures = 0;
+       return buffer;
+     } catch (error) {
++      const message = error instanceof Error ? error.message : String(error);
++      if (message.includes("UnencryptedWhenPassthroughDisabled")) {
++        return packet;
++      }
+       if (!this.reinitializing && this.pendingTransitions.size === 0) {
+         this.consecutiveFailures++;
+         this.emit("debug", `Failed to decrypt a packet (${this.consecutiveFailures} consecutive fails)`);

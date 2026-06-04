@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  sic-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sic-discord-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+
+networks:
+  default:
+    name: ${OPENCLAW_DOCKER_NETWORK:-sic-bot_default}
+    external: ${OPENCLAW_DOCKER_NETWORK_EXTERNAL:-false}
