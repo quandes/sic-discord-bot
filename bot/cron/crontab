@@ -1,0 +1,1 @@
+10 18 * * 1 /usr/local/bin/warmup-whisper.sh >> /var/log/warmup.log 2>&1

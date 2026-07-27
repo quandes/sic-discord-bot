@@ -17,6 +17,7 @@ export interface Settings {
   whisperAsrUrl: string;
   whisperAsrLanguage: string;
   whisperAsrTimeoutSeconds: number;
+  whisperAsrToken: string | null;
   multicaBaseUrl: string;
   multicaApiToken: string;
   multicaWorkspaceId: string;
@@ -26,6 +27,10 @@ export interface Settings {
   openclawApiToken: string | null;
   openclawTimeoutSeconds: number;
   openclawModel: string;
+  /** Mounted OpenClaw workspace dir; meeting artifacts are exported there when set. */
+  openclawWorkspaceDir: string | null;
+  /** Project context file included in every ticket prompt (default: <workspace>/projekt-kontext.md). */
+  projectContextFile: string | null;
 }
 
 function loadEnvFile(filePath: string): void {
@@ -66,6 +71,8 @@ export function loadSettings(): Settings {
   const discordAllowedRoleIds = parseRoleIds(process.env.DISCORD_ALLOWED_ROLE_IDS);
   const discordReviewerRoleIds = parseRoleIds(process.env.DISCORD_REVIEWER_ROLE_IDS);
 
+  const whisperAsrToken = process.env.WHISPER_ASR_TOKEN?.trim() || null;
+
   return {
     discordBotToken: requireEnv('DISCORD_BOT_TOKEN'),
     discordGuildId: process.env.DISCORD_GUILD_ID?.trim() || null,
@@ -75,6 +82,7 @@ export function loadSettings(): Settings {
     whisperAsrUrl: requireEnv('WHISPER_ASR_URL').replace(/\/$/, ''),
     whisperAsrLanguage: process.env.WHISPER_ASR_LANGUAGE || 'de',
     whisperAsrTimeoutSeconds: Number(process.env.WHISPER_ASR_TIMEOUT_SECONDS || '600'),
+    whisperAsrToken,
     multicaBaseUrl: requireEnv('MULTICA_BASE_URL').replace(/\/$/, ''),
     multicaApiToken: requireEnv('MULTICA_API_TOKEN'),
     multicaWorkspaceId: requireEnv('MULTICA_WORKSPACE_ID'),
@@ -84,5 +92,7 @@ export function loadSettings(): Settings {
     openclawApiToken: openclawToken,
     openclawTimeoutSeconds: Number(process.env.OPENCLAW_TIMEOUT_SECONDS || '120'),
     openclawModel: (process.env.OPENCLAW_MODEL || 'openclaw/default').trim() || 'openclaw/default',
+    openclawWorkspaceDir: process.env.OPENCLAW_WORKSPACE_DIR?.trim().replace(/\/$/, '') || null,
+    projectContextFile: process.env.PROJECT_CONTEXT_FILE?.trim() || null,
   };
 }

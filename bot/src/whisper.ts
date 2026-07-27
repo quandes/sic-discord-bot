@@ -12,13 +12,18 @@ export async function transcribeWavFile(settings: Settings, filePath: string): P
     contentType: 'audio/wav',
   });
 
+  const headers = form.getHeaders();
+  if (settings.whisperAsrToken) {
+    headers['Authorization'] = `Bearer ${settings.whisperAsrToken}`;
+  }
+
   const response = await axios.post(`${settings.whisperAsrUrl}/asr`, form, {
     params: {
       task: 'transcribe',
       language: settings.whisperAsrLanguage,
       output: 'txt',
     },
-    headers: form.getHeaders(),
+    headers,
     timeout: settings.whisperAsrTimeoutSeconds * 1000,
     maxBodyLength: Infinity,
   });

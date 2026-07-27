@@ -9,6 +9,20 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    # Export meeting artifacts into the OpenClaw workspace:
+    # mount the same host path OpenClaw uses as its workspace and set
+    # OPENCLAW_WORKSPACE_DIR=/openclaw-workspace in .env
+    volumes:
+      - /docker/openclaw-gfg2/data/.openclaw/workspace:/openclaw-workspace
+
+  whisper-warmup:
+    build:
+      context: ./cron
+    container_name: sic-whisper-warmup
+    restart: unless-stopped
+    init: true
+    volumes:
+      - ./.env:/app/.env:ro
 
 networks:
   default:

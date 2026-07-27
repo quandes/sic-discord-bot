@@ -52,6 +52,8 @@ export interface ActiveRecording {
   connection: VoiceConnection;
   tracks: Map<string, SpeakerTrack>;
   udpStats: UdpReceiveStats;
+  /** Current segment number; incremented on every interim review (rotateSegment). */
+  segmentIndex: number;
 }
 
 const recordings = new Map<string, ActiveRecording>();
@@ -108,6 +110,7 @@ export async function startRecording(
     connection,
     tracks: new Map(),
     udpStats: { udpPackets: 0, knownSsrc: 0, hasSubscription: 0 },
+    segmentIndex: 0,
   };
 
   connection.receiver.speaking.on('start', (userId) => {
@@ -128,11 +131,19 @@ export async function startRecording(
   return recording;
 }
 
+function segmentPcmPath(meetingId: string, userId: string, segment: number): string {
+  return path.join(os.tmpdir(), `sic-${meetingId}-${userId}-p${segment}.pcm`);
+}
+
+function segmentWavPath(meetingId: string, userId: string, segment: number): string {
+  return path.join(os.tmpdir(), `sic-${meetingId}-${userId}-p${segment}.wav`);
+}
+
 export function ensureTrack(recording: ActiveRecording, userId: string): SpeakerTrack | undefined {
   if (recording.tracks.has(userId)) return recording.tracks.get(userId);
 
-  const pcmPath = path.join(os.tmpdir(), `sic-${recording.meetingId}-${userId}.pcm`);
-  const wavPath = path.join(os.tmpdir(), `sic-${recording.meetingId}-${userId}.wav`);
+  const pcmPath = segmentPcmPath(recording.meetingId, userId, recording.segmentIndex);
+  const wavPath = segmentWavPath(recording.meetingId, userId, recording.segmentIndex);
   const opusStream = recording.connection.receiver.subscribe(userId, {
     end: { behavior: EndBehaviorType.Manual },
   });
@@ -198,10 +209,80 @@ export interface TrackStopInfo {
   used: boolean;
 }
 
+export interface SegmentTrackFile {
+  userId: string;
+  wavPath: string;
+}
+
+interface PendingSegmentTrack {
+  userId: string;
+  pcmPath: string;
+  wavPath: string;
+  writer: fs.WriteStream;
+}
+
+/**
+ * Interim review: finish the current per-speaker PCM files and immediately
+ * start fresh ones. The voice connection and Opus subscriptions stay alive,
+ * so the recording continues seamlessly. Returns WAV files for the finished
+ * segment; tracks with too little audio are skipped.
+ */
+export async function rotateSegment(guildId: string): Promise<{
+  meetingId: string;
+  finishedSegment: number;
+  trackFiles: SegmentTrackFile[];
+}> {
+  const recording = recordings.get(guildId);
+  if (!recording) throw new Error('Keine aktive Aufnahme in diesem Server.');
+
+  const finishedSegment = recording.segmentIndex;
+  recording.segmentIndex += 1;
+
+  const pending: PendingSegmentTrack[] = [];
+  for (const track of recording.tracks.values()) {
+    pending.push({
+      userId: track.userId,
+      pcmPath: track.pcmPath,
+      wavPath: track.wavPath,
+      writer: track.writer,
+    });
+
+    // Detach the old writer; the decoder buffers until the new one is piped.
+    track.decoder.unpipe(track.writer);
+    track.writer.end();
+
+    track.pcmPath = segmentPcmPath(recording.meetingId, track.userId, recording.segmentIndex);
+    track.wavPath = segmentWavPath(recording.meetingId, track.userId, recording.segmentIndex);
+    track.packetCount = 0;
+    track.writer = fs.createWriteStream(track.pcmPath);
+    track.writer.on('error', (err) => console.warn(`writer user=${track.userId}:`, err.message));
+    track.decoder.pipe(track.writer);
+  }
+
+  const trackFiles: SegmentTrackFile[] = [];
+  for (const p of pending) {
+    await waitForFinish(p.writer);
+    const pcmBytes = await fileSize(p.pcmPath);
+    if (pcmBytes < MIN_PCM_BYTES) {
+      if (!KEEP_RECORDING_FILES) await fsp.unlink(p.pcmPath).catch(() => undefined);
+      continue;
+    }
+    await writeWavFromPcm(p.pcmPath, p.wavPath, pcmBytes);
+    trackFiles.push({ userId: p.userId, wavPath: p.wavPath });
+    if (!KEEP_RECORDING_FILES) await fsp.unlink(p.pcmPath).catch(() => undefined);
+  }
+
+  console.log(
+    `Segment rotated meeting=${recording.meetingId} finished=${finishedSegment} usable_tracks=${trackFiles.length}`,
+  );
+  return { meetingId: recording.meetingId, finishedSegment, trackFiles };
+}
+
 export async function stopRecording(guildId: string): Promise<{
   meetingId: string;
   textChannelId: string;
-  trackFiles: { userId: string; wavPath: string }[];
+  finishedSegment: number;
+  trackFiles: SegmentTrackFile[];
   trackDebug: TrackStopInfo[];
 }> {
   const recording = recordings.get(guildId);
@@ -227,7 +308,7 @@ export async function stopRecording(guildId: string): Promise<{
     `UDP stats meeting=${recording.meetingId}: udp=${recording.udpStats.udpPackets} known_ssrc=${recording.udpStats.knownSsrc} subscribed=${recording.udpStats.hasSubscription}`,
   );
 
-  const trackFiles: { userId: string; wavPath: string }[] = [];
+  const trackFiles: SegmentTrackFile[] = [];
   const trackDebug: TrackStopInfo[] = [];
 
   for (const track of recording.tracks.values()) {
@@ -266,6 +347,7 @@ export async function stopRecording(guildId: string): Promise<{
   return {
     meetingId: recording.meetingId,
     textChannelId: recording.textChannelId,
+    finishedSegment: recording.segmentIndex,
     trackFiles,
     trackDebug,
   };

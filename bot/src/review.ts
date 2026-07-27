@@ -3,17 +3,15 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  type Client,
   type Interaction,
-  type TextChannel,
   type GuildTextBasedChannel,
 } from 'discord.js';
 
 import type { Settings } from './config.js';
 import { memberHasAnyRole } from './discordAuth.js';
 import { createMulticaTicket } from './multica.js';
-import { buildProposals } from './proposals.js';
 import type { TicketProposal } from './types.js';
+import { exportTicketDecision } from './workspaceExport.js';
 
 const pendingProposals = new Map<string, TicketProposal>();
 
@@ -47,50 +45,24 @@ function buildReviewRow(key: string): ActionRowBuilder<ButtonBuilder> {
   );
 }
 
-async function getReviewChannel(client: Client, settings: Settings): Promise<GuildTextBasedChannel> {
-  if (!settings.discordReviewChannelId) {
-    throw new Error('No fallback review channel configured (DISCORD_REVIEW_CHANNEL_ID is missing in .env)');
-  }
-  const channel = await client.channels.fetch(settings.discordReviewChannelId);
-  if (!channel?.isTextBased() || channel.isDMBased()) {
-    throw new Error(`DISCORD_REVIEW_CHANNEL_ID ${settings.discordReviewChannelId} is not a guild text channel`);
-  }
-  return channel as GuildTextBasedChannel;
-}
-
-export async function postReviewProposals(
-  client: Client,
-  settings: Settings,
+/**
+ * Post ready-made proposals with approve/reject buttons.
+ * `keyOffset` must be the number of proposals already posted for this meeting,
+ * so button keys from different segments never collide.
+ */
+export async function postProposals(
   meetingId: string,
-  transcript: string,
-  targetChannel?: GuildTextBasedChannel,
+  proposals: TicketProposal[],
+  keyOffset: number,
+  textChannel: GuildTextBasedChannel,
 ): Promise<void> {
-  const textChannel = targetChannel || (await getReviewChannel(client, settings));
-
-  let proposals: TicketProposal[] = [];
-  try {
-    proposals = await buildProposals(settings, meetingId, transcript);
-  } catch (err) {
-    console.error('OpenClaw proposals failed:', err);
-    await textChannel.send(
-      '⚠️ **Fehler bei der Ticket-Generierung.** Details stehen in den Bot-Logs.',
-    );
-    return;
-  }
-
-  if (!proposals.length) {
-    await textChannel.send('ℹ️ **Keine Aufgaben gefunden** im Transkript.');
-    return;
-  }
-
   proposals.forEach((proposal, index) => {
-    const key = proposalKey(meetingId, index);
-    pendingProposals.set(key, proposal);
+    pendingProposals.set(proposalKey(meetingId, keyOffset + index), proposal);
   });
 
   for (let i = 0; i < proposals.length; i++) {
     const proposal = proposals[i]!;
-    const key = proposalKey(meetingId, i);
+    const key = proposalKey(meetingId, keyOffset + i);
     await textChannel.send({
       content: 'New reviewable ticket proposal:',
       embeds: [buildReviewEmbed(proposal)],
@@ -130,6 +102,7 @@ export async function handleReviewButton(
       content: 'Proposal rejected by reviewer.',
       components: [],
     });
+    await exportTicketDecision(settings, proposal, 'rejected');
     return;
   }
 
@@ -141,6 +114,7 @@ export async function handleReviewButton(
       let message = `Approved. Multica ticket \`${ticket.id}\` created.`;
       if (ticket.url) message += ` [Open Ticket](${ticket.url})`;
       await interaction.message?.edit({ content: message, components: [] });
+      await exportTicketDecision(settings, proposal, 'approved', ticket);
     } catch (err) {
       console.error('Multica ticket creation failed:', err);
       await interaction.followUp({

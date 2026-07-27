@@ -1,0 +1,6 @@
+- [x] test der neuen whisper schnittstelle
+- [ ] test des neuen review verhaltens
+- [ ] test openclaw schnittstelee das der wirklcih dateien in seinem  workspace speichert und die auch auslesen kann -> funktioniert noch nicht 
+- [x] workspace-export aktivieren: OPENCLAW_WORKSPACE_DIR gesetzt + /docker/openclaw-gfg2/data/.openclaw/workspace als volume gemountet, deployt und verifiziert (bot sieht AGENTS.md etc.) -> noch testen ob openclaw die transkripte/tickets darin auch tatsächlich liest
+- [ ] Openclaw noch smartet mach das der mehr agentisch erledigen kann wie selbst dateien schreiben -> schon angefangen aber openclaw gateway muss evetuell angepasst werden
+- [ ] ticketreview interaktiver gestalten, so dass man ein ticket live per voice bearbeiten kann  
